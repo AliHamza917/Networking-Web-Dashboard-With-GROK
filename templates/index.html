@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ali Hamza Cisco Networking Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <style>
+    body { background: #0f172a; color: #e2e8f0; }
+    .card { background: #1e293b; border: 1px solid #334155; }
+    .input { background: #0f172a; border: 1px solid #475569; color: #e2e8f0; }
+    .btn-primary { background: #0ea5e9; }
+    .btn-primary:hover { background: #0284c7; }
+    .btn-success { background: #10b981; }
+    .btn-danger { background: #ef4444; }
+    pre { white-space: pre-wrap; word-break: break-all; max-height: 420px; overflow-y: auto; }
+    .tab-active { border-bottom: 2px solid #0ea5e9; color: #0ea5e9; }
+    #topology-canvas { height: 480px; background: #0f172a; border-radius: 0.75rem; border: 1px solid #334155; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <!-- Header -->
+  <header class="border-b border-slate-700 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-sky-500 to-violet-600 flex items-center justify-center font-bold text-white text-sm shadow-lg ring-2 ring-sky-400/30">AH</div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight">Ali Hamza Cisco Networking Dashboard</h1>
+          <p class="text-xs text-slate-400">by <span class="text-sky-400 font-semibold">Ali Hamza</span> · IOS / IOS-XE · SSH</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4">
+        <div id="monitor-badge" class="hidden text-xs px-2 py-1 rounded-full bg-emerald-900/50 text-emerald-300 border border-emerald-700">● Monitor ON</div>
+        <div id="conn-status" class="text-sm text-slate-400">Not connected</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- LEFT: Connection -->
+    <section class="lg:col-span-1 space-y-6">
+      <div class="card rounded-xl p-5">
+        <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-sky-400"></span> Device Connection
+        </h2>
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs text-slate-400">Connection type</label>
+            <select id="connection-type" onchange="toggleConnType()" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm">
+              <option value="ssh">SSH (network)</option>
+              <option value="console">Console cable (serial COM)</option>
+            </select>
+          </div>
+          <div id="ssh-fields">
+            <label class="text-xs text-slate-400">Switch IP / Hostname</label>
+            <input id="host" type="text" placeholder="192.168.1.10" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+          </div>
+          <div id="console-fields" class="hidden space-y-2">
+            <div>
+              <label class="text-xs text-slate-400">Serial port (COM)</label>
+              <div class="flex gap-2 mt-1">
+                <input id="serial-port" type="text" placeholder="COM3" class="input flex-1 rounded-lg px-3 py-2 text-sm" />
+                <button type="button" onclick="refreshSerialPorts()" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 rounded-lg">Detect</button>
+              </div>
+              <select id="serial-port-select" onchange="document.getElementById('serial-port').value=this.value" class="input w-full mt-1 rounded-lg px-2 py-1 text-xs hidden"></select>
+            </div>
+            <div>
+              <label class="text-xs text-slate-400">Baud rate</label>
+              <select id="baudrate" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm">
+                <option value="9600" selected>9600 (default)</option>
+                <option value="115200">115200</option>
+                <option value="38400">38400</option>
+              </select>
+            </div>
+            <p class="text-[10px] text-slate-500">USB-console adapter required. Driver must be installed. Close Putty/Termius on that COM first.</p>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-slate-400">Username</label>
+              <input id="username" type="text" placeholder="admin" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+            </div>
+            <div id="ssh-port-wrap">
+              <label class="text-xs text-slate-400">SSH Port</label>
+              <input id="port" type="number" value="22" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+            </div>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">Password</label>
+            <input id="password" type="password" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">Enable Secret (optional)</label>
+            <input id="secret" type="password" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+          </div>
+          <button onclick="testConnection()" class="btn-primary w-full py-2.5 rounded-lg font-medium text-sm text-white transition">
+            Test Connection
+          </button>
+          <div id="conn-result" class="text-sm hidden"></div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="card rounded-xl p-5">
+        <h2 class="text-lg font-semibold mb-4">Quick Actions</h2>
+        <div class="space-y-2">
+          <button onclick="runShow('show version')" class="w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm transition">show version</button>
+          <button onclick="runShow('show vlan brief')" class="w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm transition">show vlan brief</button>
+          <button onclick="showTab('ports'); loadPortMap();" class="w-full text-left px-3 py-2 rounded-lg bg-sky-900/40 hover:bg-sky-800/50 text-sm transition text-sky-300">▦ Port Map (graphical)</button>
+          <button onclick="showTab('topology'); loadTopology();" class="w-full text-left px-3 py-2 rounded-lg bg-violet-900/40 hover:bg-violet-800/50 text-sm transition text-violet-300">🕸 Network Topology</button>
+          <button onclick="showTab('traceroute')" class="w-full text-left px-3 py-2 rounded-lg bg-orange-900/40 hover:bg-orange-800/50 text-sm transition text-orange-300">↗ Track Route</button>
+          <button onclick="showTab('monitor')" class="w-full text-left px-3 py-2 rounded-lg bg-rose-900/40 hover:bg-rose-800/50 text-sm transition text-rose-300">📡 Switch Monitor</button>
+          <button onclick="showTab('scanner')" class="w-full text-left px-3 py-2 rounded-lg bg-teal-900/40 hover:bg-teal-800/50 text-sm transition text-teal-300">🔍 IP Scanner</button>
+          <button onclick="runShow('show interfaces status')" class="w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm transition">show interfaces status</button>
+          <button onclick="runShow('show ip interface brief')" class="w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm transition">show ip int brief</button>
+          <button onclick="runShow('show running-config')" class="w-full text-left px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm transition">show running-config</button>
+          <button onclick="backupConfig()" class="w-full text-left px-3 py-2 rounded-lg bg-emerald-900/40 hover:bg-emerald-800/50 text-sm transition text-emerald-300">⬇ Backup running-config</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: Main panels -->
+    <section class="lg:col-span-2 space-y-6">
+      <!-- Tabs -->
+      <div class="flex gap-1 border-b border-slate-700 flex-wrap">
+        <button onclick="showTab('ports')" id="tab-ports" class="tab-active px-4 py-2 text-sm font-medium">Port Map</button>
+        <button onclick="showTab('topology')" id="tab-topology" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white">Topology</button>
+        <button onclick="showTab('traceroute')" id="tab-traceroute" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white">Track Route</button>
+        <button onclick="showTab('monitor')" id="tab-monitor" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white">Monitor</button>
+        <button onclick="showTab('scanner')" id="tab-scanner" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white">IP Scanner</button>
+        <button onclick="showTab('config')" id="tab-config" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white">Config Push</button>
+        <button onclick="showTab('vlan')" id="tab-vlan" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white">VLAN</button>
+        <button onclick="showTab('interface')" id="tab-interface" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white">Interface</button>
+        <button onclick="showTab('templates')" id="tab-templates" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white">Templates</button>
+        <button onclick="showTab('manual')" id="tab-manual" class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white">Manual</button>
+      </div>
+
+      <!-- Port Map Panel -->
+      <div id="panel-ports" class="card rounded-xl p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-lg font-semibold">Graphical Port Map</h2>
+            <p class="text-xs text-slate-400 mt-0.5">Click a port → MAC / IP hosts · trunk ports shown in blue</p>
+          </div>
+          <button onclick="loadPortMap()" class="btn-primary px-4 py-2 rounded-lg text-sm font-medium text-white flex items-center gap-2">
+            <span>↻</span> Refresh Ports
+          </button>
+        </div>
+
+        <!-- Legend -->
+        <div class="flex flex-wrap gap-4 text-xs mb-4 text-slate-300">
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-500"></span> Access Up</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-sky-500 ring-2 ring-sky-300"></span> Trunk (any state)</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-slate-600"></span> Access Down</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-500"></span> Error-disabled</span>
+        </div>
+
+        <div id="port-map-status" class="text-sm text-slate-400 mb-3">Enter credentials and click Refresh Ports</div>
+        <div id="port-grid" class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2"></div>
+
+        <!-- MAC / IP detail for selected port -->
+        <div id="port-detail-box" class="mt-4 hidden border border-slate-600 rounded-lg p-4 bg-slate-900/60">
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="font-semibold text-sm" id="port-detail-title">Port hosts</h3>
+            <div class="flex gap-2">
+              <button onclick="selectPort(document.getElementById('port-detail-iface').value)" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded">Configure</button>
+              <button onclick="document.getElementById('port-detail-box').classList.add('hidden')" class="text-xs text-slate-400 hover:text-white">Close</button>
+            </div>
+          </div>
+          <input type="hidden" id="port-detail-iface" />
+          <div id="port-detail-body" class="text-xs font-mono text-slate-300 overflow-x-auto"></div>
+        </div>
+      </div>
+
+      <!-- Traceroute Panel -->
+      <div id="panel-traceroute" class="card rounded-xl p-5 hidden">
+        <h2 class="text-lg font-semibold mb-2">Track Route (Traceroute)</h2>
+        <p class="text-xs text-slate-400 mb-4">Traceroute from the switch · visual hop map + full text</p>
+        <div class="flex flex-wrap gap-3 items-end">
+          <div class="flex-1 min-w-[200px]">
+            <label class="text-xs text-slate-400">Destination IP / Hostname</label>
+            <input id="trace-target" type="text" placeholder="8.8.8.8 or server.local" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <button onclick="runTraceroute()" class="btn-primary px-5 py-2 rounded-lg text-sm font-medium text-white">
+            Run Traceroute
+          </button>
+        </div>
+        <p class="text-xs text-slate-500 mt-3 mb-3">May take 1–2 min · <span class="text-sky-400">Blue</span> start · <span class="text-emerald-400">Green</span> hop · <span class="text-slate-400">Gray</span> timeout · <span class="text-violet-400">Violet</span> destination</p>
+        <div id="trace-map-status" class="text-sm text-slate-400 mb-2"></div>
+        <div id="trace-hop-map" class="flex flex-wrap items-stretch gap-0 min-h-[90px] p-3 rounded-lg bg-slate-950 border border-slate-700 overflow-x-auto"></div>
+      </div>
+
+      <!-- Monitor Panel – continuous multi-switch ping -->
+      <div id="panel-monitor" class="card rounded-xl p-5 hidden">
+        <h2 class="text-lg font-semibold mb-1">Switch Monitor</h2>
+        <p class="text-xs text-slate-400 mb-4">Continuous ping · saved IPs · alerts when a switch goes down</p>
+        <div class="flex flex-wrap gap-2 mb-3">
+          <input id="monitor-ip" type="text" placeholder="192.168.4.7" class="input rounded-lg px-3 py-2 text-sm flex-1 min-w-[140px]" />
+          <input id="monitor-name" type="text" placeholder="Name (optional)" class="input rounded-lg px-3 py-2 text-sm w-40" />
+          <button onclick="addMonitorHost()" class="btn-primary px-4 py-2 rounded-lg text-sm text-white">Add</button>
+          <button onclick="toggleMonitor()" id="btn-monitor-toggle" class="bg-emerald-700 hover:bg-emerald-600 px-4 py-2 rounded-lg text-sm text-white">Start Monitor</button>
+        </div>
+        <div class="flex flex-wrap gap-3 text-xs text-slate-400 mb-3">
+          <label class="flex items-center gap-1">Interval
+            <select id="monitor-interval" class="input rounded px-2 py-1 text-xs">
+              <option value="5">5s</option>
+              <option value="10" selected>10s</option>
+              <option value="30">30s</option>
+              <option value="60">60s</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2">
+            <input type="checkbox" id="monitor-alerts" checked class="rounded" /> Browser alerts on disconnect
+          </label>
+        </div>
+        <div id="monitor-list" class="space-y-2"></div>
+        <p class="text-xs text-slate-500 mt-3">IPs are stored in this browser (localStorage) for next time.</p>
+      </div>
+
+      <!-- IP Scanner Panel -->
+      <div id="panel-scanner" class="card rounded-xl p-5 hidden">
+        <h2 class="text-lg font-semibold mb-1">IP Scanner</h2>
+        <p class="text-xs text-slate-400 mb-4">Ping-scan a subnet or range from this PC (e.g. 192.168.4.0/24 or 192.168.4.1-50)</p>
+        <div class="flex flex-wrap gap-2 mb-3">
+          <input id="scan-subnet" type="text" placeholder="192.168.4.0/24" class="input rounded-lg px-3 py-2 text-sm flex-1 min-w-[180px]" />
+          <button onclick="runIpScan()" class="btn-primary px-4 py-2 rounded-lg text-sm text-white">Scan</button>
+        </div>
+        <div id="scan-status" class="text-sm text-slate-400 mb-2"></div>
+        <div id="scan-results" class="max-h-80 overflow-y-auto text-xs font-mono"></div>
+      </div>
+
+      <!-- Topology Panel -->
+      <div id="panel-topology" class="card rounded-xl p-5 hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-lg font-semibold">Network Topology</h2>
+            <p class="text-xs text-slate-400 mt-0.5">CDP / LLDP neighbors · drag nodes · scroll to zoom</p>
+          </div>
+          <button onclick="loadTopology()" class="btn-primary px-4 py-2 rounded-lg text-sm font-medium text-white flex items-center gap-2">
+            <span>↻</span> Discover Topology
+          </button>
+        </div>
+        <div class="flex flex-wrap gap-4 text-xs mb-3 text-slate-300">
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-sky-500"></span> Local switch</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-500"></span> Switch</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-violet-500"></span> Router</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500"></span> Phone / Host</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-slate-500"></span> Other</span>
+        </div>
+        <div id="topology-status" class="text-sm text-slate-400 mb-2">Enter credentials and click Discover Topology</div>
+        <div id="topology-canvas"></div>
+        <div id="topology-detail" class="mt-3 text-xs text-slate-400 font-mono hidden"></div>
+      </div>
+
+      <!-- Config Push Panel -->
+      <div id="panel-config" class="card rounded-xl p-5 hidden">
+        <h2 class="text-lg font-semibold mb-3">Free-form Configuration</h2>
+        <p class="text-sm text-slate-400 mb-3">Paste Cisco CLI commands (one per line). They will be sent in config mode.</p>
+        <textarea id="config-commands" rows="10" class="input w-full rounded-lg p-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="vlan 10&#10;name DATA&#10;interface Gi1/0/1&#10;switchport mode access&#10;switchport access vlan 10&#10;no shutdown"></textarea>
+        <div class="flex items-center gap-3 mt-4 flex-wrap">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" id="save-config" checked class="rounded" />
+            Write memory after push
+          </label>
+          <button onclick="pushConfig()" class="btn-success ml-auto px-5 py-2 rounded-lg text-sm font-medium text-white">
+            Push Config
+          </button>
+        </div>
+        <hr class="border-slate-700 my-5" />
+        <h3 class="font-semibold mb-2">Upload backup / restore config</h3>
+        <p class="text-xs text-slate-400 mb-2">Upload a previously downloaded <code>.cfg</code> file and apply it to the connected switch.</p>
+        <input id="restore-file" type="file" accept=".cfg,.txt,.conf,text/plain" class="text-xs text-slate-300 mb-2" />
+        <button onclick="restoreBackup()" class="bg-amber-700 hover:bg-amber-600 px-4 py-2 rounded-lg text-sm text-white">Upload &amp; Apply Backup</button>
+      </div>
+
+      <!-- VLAN Panel -->
+      <div id="panel-vlan" class="card rounded-xl p-5 hidden">
+        <h2 class="text-lg font-semibold mb-4">Create / Update VLAN</h2>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400">VLAN ID</label>
+            <input id="vlan-id" type="number" min="1" max="4094" placeholder="10" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">VLAN Name (optional)</label>
+            <input id="vlan-name" type="text" placeholder="DATA" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <button onclick="createVlan()" class="btn-primary mt-4 px-5 py-2 rounded-lg text-sm font-medium text-white">
+          Create VLAN
+        </button>
+      </div>
+
+      <!-- Interface Panel -->
+      <div id="panel-interface" class="card rounded-xl p-5 hidden">
+        <h2 class="text-lg font-semibold mb-4">Configure Interface</h2>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400">Interface</label>
+            <input id="iface-name" type="text" placeholder="GigabitEthernet1/0/1" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">Mode</label>
+            <select id="iface-mode" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm">
+              <option value="access">Access</option>
+              <option value="trunk">Trunk</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">VLAN / Native VLAN</label>
+            <input id="iface-vlan" type="number" placeholder="10" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">Description</label>
+            <input id="iface-desc" type="text" placeholder="User Port" class="input w-full mt-1 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div class="mt-3">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" id="iface-shutdown" class="rounded" />
+            Shutdown interface
+          </label>
+        </div>
+        <button onclick="configInterface()" class="btn-primary mt-4 px-5 py-2 rounded-lg text-sm font-medium text-white">
+          Apply Interface Config
+        </button>
+      </div>
+
+      <!-- Templates Panel -->
+      <div id="panel-templates" class="card rounded-xl p-5 hidden">
+        <h2 class="text-lg font-semibold mb-4">Ready-made Templates</h2>
+        <div id="templates-list" class="space-y-3"></div>
+      </div>
+
+      <!-- User Manual -->
+      <div id="panel-manual" class="card rounded-xl p-5 hidden">
+        <h2 class="text-lg font-semibold mb-3">End-user usage manual</h2>
+        <div class="text-sm text-slate-300 space-y-3 max-h-[480px] overflow-y-auto leading-relaxed">
+          <p><strong class="text-sky-400">Ali Hamza Cisco Networking Dashboard</strong> helps you manage Cisco IOS / IOS-XE switches from a browser.</p>
+          <h3 class="text-white font-semibold">1. Connect</h3>
+          <ul class="list-disc pl-5 space-y-1 text-slate-400">
+            <li><b>SSH</b>: enter switch IP, username, password (enable secret if needed), port 22 → Test Connection.</li>
+            <li><b>Console cable</b>: choose Console, select COM port (Detect), baud 9600, same user/pass → Test Connection. Close Putty on that COM first.</li>
+          </ul>
+          <h3 class="text-white font-semibold">2. Port Map</h3>
+          <p class="text-slate-400">Refresh Ports. Green = access up, blue = trunk, gray = down. Click a port to see MAC and IP of connected hosts.</p>
+          <h3 class="text-white font-semibold">3. Topology / Track Route</h3>
+          <p class="text-slate-400">Topology uses CDP/LLDP. Track Route runs traceroute from the switch and shows a visual hop map.</p>
+          <h3 class="text-white font-semibold">4. Monitor &amp; IP Scanner</h3>
+          <p class="text-slate-400">Monitor continuously pings saved switch IPs and alerts if one goes down. Scanner finds live hosts; <b>device type is a guess</b> (PC / mobile / network) based on TTL — not 100% accurate, and a switch may look like a PC if TTL is rewritten.</p>
+          <h3 class="text-white font-semibold">5. Config / Backup / Restore</h3>
+          <ul class="list-disc pl-5 space-y-1 text-slate-400">
+            <li>Config Push: paste CLI lines and apply.</li>
+            <li>Backup: download running-config.</li>
+            <li>Upload &amp; Apply Backup: restore from a .cfg file (review carefully before production).</li>
+          </ul>
+          <h3 class="text-white font-semibold">6. Safety</h3>
+          <p class="text-slate-400">Lab / trusted networks only. Always review commands. © Ali Hamza · alihamza51326@gmail.com</p>
+        </div>
+      </div>
+
+      <!-- Output -->
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Output</h2>
+          <button onclick="document.getElementById('output').textContent=''" class="text-xs text-slate-400 hover:text-white">Clear</button>
+        </div>
+        <pre id="output" class="bg-slate-950 rounded-lg p-4 text-xs font-mono text-green-400 min-h-[120px]">Ready. Enter device credentials and start working.</pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-slate-800 mt-8 py-6 text-center text-xs text-slate-500 space-y-1">
+    <p><span class="text-sky-400 font-semibold">Ali Hamza</span> · Ali Hamza Cisco Networking Dashboard</p>
+    <p>© 2026 Ali Hamza · <a href="mailto:alihamza51326@gmail.com" class="text-sky-400 hover:underline">alihamza51326@gmail.com</a>. All rights reserved.</p>
+    <p class="text-slate-600 max-w-xl mx-auto">This software and its design are proprietary to Ali Hamza. Unauthorized copying, redistribution, or commercial use of this application without written permission is prohibited. Always review CLI before pushing to production switches.</p>
+  </footer>
+
+  <script>
+    // ---------- Helpers ----------
+    function getCreds() {
+      const ctype = document.getElementById('connection-type').value;
+      const serial = document.getElementById('serial-port').value.trim();
+      const hostIp = document.getElementById('host').value.trim();
+      return {
+        host: ctype === 'console' ? (serial || hostIp) : hostIp,
+        username: document.getElementById('username').value.trim(),
+        password: document.getElementById('password').value,
+        secret: document.getElementById('secret').value || null,
+        port: parseInt(document.getElementById('port').value) || 22,
+        connection_type: ctype,
+        serial_port: serial || null,
+        baudrate: parseInt(document.getElementById('baudrate').value) || 9600
+      };
+    }
+
+    function requireCreds() {
+      const c = getCreds();
+      if (c.connection_type === 'console') {
+        if (!c.serial_port) { alert('Enter serial port e.g. COM3'); return null; }
+      } else {
+        if (!c.host) { alert('Enter switch IP'); return null; }
+      }
+      if (!c.username || !c.password) {
+        alert('Please fill Username and Password.');
+        return null;
+      }
+      return c;
+    }
+
+    function toggleConnType() {
+      const c = document.getElementById('connection-type').value;
+      document.getElementById('ssh-fields').classList.toggle('hidden', c === 'console');
+      document.getElementById('console-fields').classList.toggle('hidden', c !== 'console');
+      document.getElementById('ssh-port-wrap').classList.toggle('hidden', c === 'console');
+    }
+
+    async function refreshSerialPorts() {
+      try {
+        const res = await fetch('/api/serial-ports');
+        const data = await res.json();
+        const sel = document.getElementById('serial-port-select');
+        if (!data.ports || !data.ports.length) {
+          sel.classList.add('hidden');
+          setOutput('No serial ports detected. Type COM3 manually (Device Manager → Ports).');
+          return;
+        }
+        sel.innerHTML = data.ports.map(p => `<option value="${p.device}">${p.device} — ${p.description}</option>`).join('');
+        sel.classList.remove('hidden');
+        document.getElementById('serial-port').value = data.ports[0].device;
+        setOutput('Serial ports: ' + data.ports.map(p => p.device).join(', '));
+      } catch (e) {
+        setOutput('Serial detect error: ' + e.message, true);
+      }
+    }
+
+    function setOutput(text, isError = false) {
+      const el = document.getElementById('output');
+      el.textContent = text;
+      el.className = `bg-slate-950 rounded-lg p-4 text-xs font-mono min-h-[120px] ${isError ? 'text-red-400' : 'text-green-400'}`;
+    }
+
+    function showTab(name) {
+      ['ports', 'topology', 'traceroute', 'monitor', 'scanner', 'config', 'vlan', 'interface', 'templates', 'manual'].forEach(t => {
+        document.getElementById(`panel-${t}`).classList.add('hidden');
+        document.getElementById(`tab-${t}`).classList.remove('tab-active');
+        document.getElementById(`tab-${t}`).classList.add('text-slate-400');
+      });
+      document.getElementById(`panel-${name}`).classList.remove('hidden');
+      document.getElementById(`tab-${name}`).classList.add('tab-active');
+      document.getElementById(`tab-${name}`).classList.remove('text-slate-400');
+    }
+
+    // ---------- API calls ----------
+    async function testConnection() {
+      const creds = requireCreds();
+      if (!creds) return;
+      setOutput('Connecting...');
+      try {
+        const res = await fetch('/api/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(creds)
+        });
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('conn-status').innerHTML = `<span class="text-emerald-400">● Connected · ${data.hostname}</span>`;
+          setOutput(`Connected successfully!\nHostname: ${data.hostname}\nPrompt: ${data.prompt}\n\n${data.version_snippet}`);
+        } else {
+          document.getElementById('conn-status').textContent = 'Connection failed';
+          setOutput(data.error, true);
+        }
+      } catch (e) {
+        setOutput('Network error: ' + e.message, true);
+      }
+    }
+
+    async function runShow(cmd) {
+      const creds = requireCreds();
+      if (!creds) return;
+      setOutput(`Running: ${cmd} ...`);
+      try {
+        const res = await fetch('/api/show', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...creds, command: cmd })
+        });
+        const data = await res.json();
+        setOutput(data.success ? data.output : data.error, !data.success);
+      } catch (e) {
+        setOutput('Error: ' + e.message, true);
+      }
+    }
+
+    async function pushConfig() {
+      const creds = requireCreds();
+      if (!creds) return;
+      const raw = document.getElementById('config-commands').value;
+      const commands = raw.split('\n').map(l => l.trim()).filter(Boolean);
+      if (!commands.length) {
+        alert('No commands entered');
+        return;
+      }
+      if (!confirm(`Push ${commands.length} command(s) to ${creds.host}?`)) return;
+
+      setOutput('Pushing configuration...');
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...creds,
+            config_commands: commands,
+            save: document.getElementById('save-config').checked
+          })
+        });
+        const data = await res.json();
+        setOutput(data.success ? data.output : data.error, !data.success);
+      } catch (e) {
+        setOutput('Error: ' + e.message, true);
+      }
+    }
+
+    async function createVlan() {
+      const creds = requireCreds();
+      if (!creds) return;
+      const vlan_id = parseInt(document.getElementById('vlan-id').value);
+      if (!vlan_id) { alert('Enter VLAN ID'); return; }
+      const vlan_name = document.getElementById('vlan-name').value || null;
+
+      setOutput(`Creating VLAN ${vlan_id}...`);
+      try {
+        const res = await fetch('/api/vlan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...creds, vlan_id, vlan_name })
+        });
+        const data = await res.json();
+        setOutput(data.success ? data.output : data.error, !data.success);
+      } catch (e) {
+        setOutput('Error: ' + e.message, true);
+      }
+    }
+
+    async function configInterface() {
+      const creds = requireCreds();
+      if (!creds) return;
+      const interfaceName = document.getElementById('iface-name').value.trim();
+      if (!interfaceName) { alert('Enter interface name'); return; }
+
+      setOutput(`Configuring ${interfaceName}...`);
+      try {
+        const res = await fetch('/api/interface', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...creds,
+            interface: interfaceName,
+            mode: document.getElementById('iface-mode').value,
+            vlan: parseInt(document.getElementById('iface-vlan').value) || null,
+            description: document.getElementById('iface-desc').value || null,
+            shutdown: document.getElementById('iface-shutdown').checked
+          })
+        });
+        const data = await res.json();
+        setOutput(data.success ? data.output : data.error, !data.success);
+      } catch (e) {
+        setOutput('Error: ' + e.message, true);
+      }
+    }
+
+    async function backupConfig() {
+      const creds = requireCreds();
+      if (!creds) return;
+      setOutput('Downloading running-config...');
+      try {
+        const res = await fetch('/api/backup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(creds)
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          setOutput(data.error || 'Backup failed', true);
+          return;
+        }
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = res.headers.get('content-disposition')?.split('filename=')[1] || 'running-config.cfg';
+        a.click();
+        setOutput('Backup downloaded successfully.');
+      } catch (e) {
+        setOutput('Error: ' + e.message, true);
+      }
+    }
+
+    async function restoreBackup() {
+      const creds = requireCreds();
+      if (!creds) return;
+      const fileInput = document.getElementById('restore-file');
+      if (!fileInput.files || !fileInput.files[0]) {
+        alert('Choose a .cfg backup file first');
+        return;
+      }
+      if (!confirm('Apply this backup config to the switch? This can change production settings.')) return;
+      setOutput('Uploading and applying backup...');
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      fd.append('host', creds.host || '');
+      fd.append('username', creds.username || '');
+      fd.append('password', creds.password || '');
+      fd.append('secret', creds.secret || '');
+      fd.append('port', creds.port || 22);
+      fd.append('connection_type', creds.connection_type || 'ssh');
+      fd.append('serial_port', creds.serial_port || '');
+      fd.append('baudrate', creds.baudrate || 9600);
+      fd.append('save', document.getElementById('save-config').checked ? 'true' : 'false');
+      try {
+        const res = await fetch('/api/restore', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!data.success) {
+          setOutput(data.error || 'Restore failed', true);
+          return;
+        }
+        setOutput(`Backup applied (${data.lines_applied} lines):\n\n${data.output}`);
+      } catch (e) {
+        setOutput('Restore error: ' + e.message, true);
+      }
+    }
+
+    // ---------- Port Map ----------
+    function portColor(p) {
+      // Trunk always highlighted in sky/blue (up or down)
+      if (p.mode === 'trunk') {
+        if (p.state === 'error') return 'bg-amber-500 border-amber-300 ring-2 ring-sky-400';
+        if (p.state === 'up') return 'bg-sky-500 border-sky-300 ring-2 ring-sky-200';
+        return 'bg-sky-900 border-sky-500 ring-2 ring-sky-600'; // trunk down still blue-ish
+      }
+      if (p.state === 'error') return 'bg-amber-500 border-amber-400';
+      if (p.state === 'up') return 'bg-emerald-600 border-emerald-400';
+      if (p.state === 'down') return 'bg-slate-700 border-slate-600';
+      return 'bg-slate-800 border-slate-600';
+    }
+
+    function shortPort(name) {
+      return name.replace(/^(GigabitEthernet|Gi|FastEthernet|Fa|TenGigabitEthernet|Te|Ethernet|Eth)/i, '');
+    }
+
+    async function loadPortMap() {
+      const creds = requireCreds();
+      if (!creds) return;
+      const statusEl = document.getElementById('port-map-status');
+      const grid = document.getElementById('port-grid');
+      statusEl.textContent = 'Fetching interface status...';
+      grid.innerHTML = '';
+      document.getElementById('port-detail-box').classList.add('hidden');
+      setOutput('Loading port map...');
+
+      try {
+        const res = await fetch('/api/ports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(creds)
+        });
+        const data = await res.json();
+        if (!data.success) {
+          statusEl.textContent = data.error || 'Failed';
+          setOutput(data.error || 'Failed to load ports', true);
+          return;
+        }
+
+        const up = data.ports.filter(p => p.state === 'up').length;
+        const down = data.ports.filter(p => p.state === 'down').length;
+        const trunks = data.trunk_count || data.ports.filter(p => p.mode === 'trunk').length;
+        statusEl.innerHTML = `<span class="text-emerald-400">${data.hostname}</span> · ${data.count} ports · <span class="text-emerald-400">${up} up</span> · <span class="text-slate-400">${down} down</span> · <span class="text-sky-400">${trunks} trunk</span>`;
+
+        grid.innerHTML = data.ports.map(p => {
+          const color = portColor(p);
+          const vlanLabel = p.mode === 'trunk' ? 'TRK' : (p.vlan || '—');
+          const title = `${p.port}\nMode: ${p.mode}\nStatus: ${p.status}\nVLAN: ${p.vlan}\n${p.name || ''}\nClick for MAC/IP`;
+          return `
+            <button onclick='showPortDetail(${JSON.stringify(p.port)})'
+                    title="${title.replace(/"/g, '&quot;')}"
+                    class="${color} border rounded-lg p-2 text-center hover:ring-2 hover:ring-white/50 transition cursor-pointer min-h-[64px] flex flex-col justify-center">
+              <div class="text-[11px] font-bold leading-tight text-white">${shortPort(p.port)}</div>
+              <div class="text-[10px] mt-0.5 opacity-90 font-semibold">${vlanLabel}</div>
+              <div class="text-[9px] opacity-70 truncate">${p.speed || ''}</div>
+            </button>
+          `;
+        }).join('');
+
+        setOutput(`Port map loaded: ${data.count} ports on ${data.hostname} (${trunks} trunk)`);
+      } catch (e) {
+        statusEl.textContent = 'Error loading ports';
+        setOutput('Error: ' + e.message, true);
+      }
+    }
+
+    async function showPortDetail(portName) {
+      const creds = requireCreds();
+      if (!creds) return;
+      const box = document.getElementById('port-detail-box');
+      const body = document.getElementById('port-detail-body');
+      document.getElementById('port-detail-title').textContent = `Hosts on ${portName}`;
+      document.getElementById('port-detail-iface').value = portName;
+      box.classList.remove('hidden');
+      body.innerHTML = '<span class="text-slate-400">Loading MAC / IP...</span>';
+      setOutput(`Fetching MAC/IP for ${portName}...`);
+
+      try {
+        const res = await fetch('/api/port-detail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...creds, interface: portName })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          body.innerHTML = `<span class="text-red-400">${data.error || 'Failed'}</span>`;
+          setOutput(data.error || 'Port detail failed', true);
+          return;
+        }
+        if (!data.hosts || data.hosts.length === 0) {
+          body.innerHTML = '<span class="text-slate-400">No MAC addresses learned on this port (empty, uplink-only, or MAC aging).</span>';
+          if (data.mac_table_raw) {
+            body.innerHTML += `<pre class="mt-2 text-[10px] text-slate-500 whitespace-pre-wrap">${data.mac_table_raw.slice(0, 1500)}</pre>`;
+          }
+          setOutput(`No hosts on ${portName}`);
+          return;
+        }
+        let html = `<table class="w-full text-left border-collapse"><thead><tr class="text-slate-400 border-b border-slate-700">
+          <th class="py-1 pr-3">VLAN</th><th class="py-1 pr-3">MAC</th><th class="py-1 pr-3">IP</th><th class="py-1">Type</th></tr></thead><tbody>`;
+        data.hosts.forEach(h => {
+          html += `<tr class="border-b border-slate-800"><td class="py-1 pr-3">${h.vlan}</td><td class="py-1 pr-3 text-emerald-300">${h.mac}</td><td class="py-1 pr-3 text-sky-300">${h.ip || '—'}</td><td class="py-1">${h.type}</td></tr>`;
+        });
+        html += '</tbody></table>';
+        body.innerHTML = html;
+        setOutput(`${data.host_count} host(s) on ${portName}`);
+      } catch (e) {
+        body.innerHTML = `<span class="text-red-400">${e.message}</span>`;
+        setOutput('Error: ' + e.message, true);
+      }
+    }
+
+    function selectPort(portName) {
+      document.getElementById('iface-name').value = portName;
+      showTab('interface');
+      setOutput(`Selected port ${portName} — adjust settings and click Apply Interface Config`);
+    }
+
+    function hopBoxClass(status) {
+      if (status === 'source') return 'bg-sky-600 border-sky-400';
+      if (status === 'destination') return 'bg-violet-600 border-violet-400';
+      if (status === 'timeout') return 'bg-slate-700 border-slate-500 opacity-80';
+      if (status === 'ok') return 'bg-emerald-700 border-emerald-400';
+      return 'bg-slate-600 border-slate-500';
+    }
+
+    function renderHopMap(hops, hostname, target) {
+      const map = document.getElementById('trace-hop-map');
+      const status = document.getElementById('trace-map-status');
+      if (!hops || !hops.length) {
+        map.innerHTML = '<span class="text-slate-500 text-sm">No hops parsed</span>';
+        return;
+      }
+      const mid = hops.filter(h => h.status !== 'source' && h.status !== 'destination').length;
+      status.innerHTML = `<span class="text-emerald-400">${hostname}</span> → <span class="text-violet-400">${target}</span> · ${mid} hop(s)`;
+
+      let html = '';
+      hops.forEach((h, i) => {
+        const avg = h.rtt_ms && h.rtt_ms.length
+          ? (h.rtt_ms.reduce((a, b) => a + b, 0) / h.rtt_ms.length).toFixed(1) + ' ms'
+          : (h.status === 'timeout' ? '* * *' : '—');
+        const hopLabel = h.status === 'source' ? 'SRC' : (h.status === 'destination' ? 'DST' : ('#' + h.hop));
+        html += `
+          <div class="flex items-center">
+            <div class="${hopBoxClass(h.status)} border rounded-lg px-3 py-2 min-w-[110px] text-center shadow">
+              <div class="text-[10px] uppercase tracking-wide opacity-80">${hopLabel}</div>
+              <div class="text-xs font-bold text-white truncate max-w-[140px]" title="${h.ip}">${h.label}</div>
+              <div class="text-[10px] mt-0.5 opacity-90">${avg}</div>
+            </div>
+            ${i < hops.length - 1 ? '<div class="text-slate-500 px-1 text-lg">→</div>' : ''}
+          </div>`;
+      });
+      map.innerHTML = html;
+    }
+
+    async function runTraceroute() {
+      const creds = requireCreds();
+      if (!creds) return;
+      const target = document.getElementById('trace-target').value.trim();
+      if (!target) { alert('Enter a destination IP or hostname'); return; }
+      const map = document.getElementById('trace-hop-map');
+      const status = document.getElementById('trace-map-status');
+      status.textContent = 'Running traceroute...';
+      map.innerHTML = '<span class="text-slate-500 text-sm animate-pulse">Tracing path…</span>';
+      setOutput(`Traceroute to ${target} from switch (please wait)...`);
+      try {
+        const res = await fetch('/api/traceroute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...creds, target })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          status.textContent = data.error || 'Failed';
+          map.innerHTML = '';
+          setOutput(data.error || 'Traceroute failed', true);
+          return;
+        }
+        renderHopMap(data.hops || [], data.hostname, data.target);
+        setOutput(`Traceroute from ${data.hostname} to ${data.target}:\n\n${data.output}`);
+      } catch (e) {
+        status.textContent = 'Error';
+        map.innerHTML = '';
+        setOutput('Error: ' + e.message, true);
+      }
+    }
+
+    // ---------- Topology ----------
+    let topologyNetwork = null;
+
+    function nodeColor(type) {
+      const map = {
+        local: '#0ea5e9',
+        switch: '#10b981',
+        router: '#8b5cf6',
+        phone: '#f59e0b',
+        host: '#f59e0b',
+        device: '#64748b'
+      };
+      return map[type] || '#64748b';
+    }
+
+    async function loadTopology() {
+      const creds = requireCreds();
+      if (!creds) return;
+      const statusEl = document.getElementById('topology-status');
+      const detailEl = document.getElementById('topology-detail');
+      statusEl.textContent = 'Discovering neighbors via CDP/LLDP...';
+      detailEl.classList.add('hidden');
+      setOutput('Discovering network topology...');
+
+      try {
+        const res = await fetch('/api/topology', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(creds)
+        });
+        const data = await res.json();
+        if (!data.success) {
+          statusEl.textContent = data.error || 'Failed';
+          setOutput(data.error || 'Topology discovery failed', true);
+          return;
+        }
+
+        statusEl.innerHTML = `<span class="text-emerald-400">${data.hostname}</span> · ${data.neighbor_count} neighbor(s) · ${data.nodes.length} nodes · ${data.edges.length} links`;
+
+        const nodes = new vis.DataSet(data.nodes.map(n => ({
+          id: n.id,
+          label: n.label + (n.ip ? `\n${n.ip}` : ''),
+          title: `${n.label}\nType: ${n.type}\nIP: ${n.ip || 'N/A'}\nPlatform: ${n.platform || 'N/A'}`,
+          color: {
+            background: nodeColor(n.type),
+            border: '#e2e8f0',
+            highlight: { background: nodeColor(n.type), border: '#fff' }
+          },
+          font: { color: '#fff', size: 12, face: 'Segoe UI, sans-serif' },
+          shape: n.type === 'local' ? 'box' : 'dot',
+          size: n.type === 'local' ? 28 : 22,
+          borderWidth: 2
+        })));
+
+        const edges = new vis.DataSet(data.edges.map((e, i) => ({
+          id: i,
+          from: e.from,
+          to: e.to,
+          label: e.label,
+          title: `${e.protocol.toUpperCase()}\nLocal: ${e.local_interface}\nRemote: ${e.neighbor_interface}`,
+          font: { color: '#94a3b8', size: 9, strokeWidth: 0, align: 'middle' },
+          color: { color: '#475569', highlight: '#0ea5e9' },
+          smooth: { type: 'continuous' },
+          width: 2
+        })));
+
+        const container = document.getElementById('topology-canvas');
+        if (topologyNetwork) {
+          topologyNetwork.destroy();
+        }
+        topologyNetwork = new vis.Network(container, { nodes, edges }, {
+          physics: {
+            enabled: true,
+            barnesHut: { gravitationalConstant: -4000, springLength: 160, springConstant: 0.04 }
+          },
+          interaction: { hover: true, tooltipDelay: 120, navigationButtons: true, keyboard: true },
+          layout: { improvedLayout: true }
+        });
+
+        topologyNetwork.on('click', params => {
+          if (params.nodes.length) {
+            const node = data.nodes.find(n => n.id === params.nodes[0]);
+            if (node) {
+              detailEl.classList.remove('hidden');
+              detailEl.textContent = `Selected: ${node.label}  |  Type: ${node.type}  |  IP: ${node.ip || 'N/A'}  |  Platform: ${node.platform || 'N/A'}`;
+            }
+          } else if (params.edges.length) {
+            const edge = data.edges[params.edges[0]];
+            if (edge) {
+              detailEl.classList.remove('hidden');
+              detailEl.textContent = `Link: ${edge.from} [${edge.local_interface}]  ↔  ${edge.to} [${edge.neighbor_interface}]  (${edge.protocol.toUpperCase()})`;
+            }
+          }
+        });
+
+        setOutput(`Topology loaded: ${data.neighbor_count} neighbor(s) from ${data.hostname}`);
+      } catch (e) {
+        statusEl.textContent = 'Error discovering topology';
+        setOutput('Error: ' + e.message, true);
+      }
+    }
+
+    // Load templates
+    // ---------- Switch Monitor (saved IPs + continuous ping + alerts) ----------
+    const MONITOR_KEY = 'ali_hamza_monitor_hosts';
+    let monitorTimer = null;
+    let monitorRunning = false;
+    let lastAlive = {}; // ip -> bool
+
+    function loadMonitorHosts() {
+      try { return JSON.parse(localStorage.getItem(MONITOR_KEY) || '[]'); }
+      catch { return []; }
+    }
+    function saveMonitorHosts(list) {
+      localStorage.setItem(MONITOR_KEY, JSON.stringify(list));
+    }
+
+    function renderMonitorList() {
+      const list = loadMonitorHosts();
+      const el = document.getElementById('monitor-list');
+      if (!list.length) {
+        el.innerHTML = '<p class="text-slate-500 text-sm">No switches saved yet. Add an IP above.</p>';
+        return;
+      }
+      el.innerHTML = list.map((h, i) => {
+        const st = h._status || 'unknown';
+        const color = st === 'up' ? 'text-emerald-400' : (st === 'down' ? 'text-red-400' : 'text-slate-400');
+        const dot = st === 'up' ? 'bg-emerald-400' : (st === 'down' ? 'bg-red-500' : 'bg-slate-500');
+        const rtt = h._rtt != null ? h._rtt + ' ms' : '—';
+        return `<div class="flex items-center justify-between bg-slate-800/80 rounded-lg px-3 py-2 border border-slate-700">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-2.5 h-2.5 rounded-full ${dot}"></span>
+            <div class="min-w-0">
+              <div class="text-sm font-medium truncate">${h.name || h.ip}</div>
+              <div class="text-[10px] text-slate-400">${h.ip} · <span class="${color}">${st.toUpperCase()}</span> · ${rtt}</div>
+            </div>
+          </div>
+          <div class="flex gap-2 shrink-0">
+            <button onclick="useMonitorHost('${h.ip}')" class="text-[10px] bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded">Use</button>
+            <button onclick="removeMonitorHost(${i})" class="text-[10px] text-red-400 hover:text-red-300 px-2 py-1">✕</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function addMonitorHost() {
+      const ip = document.getElementById('monitor-ip').value.trim();
+      const name = document.getElementById('monitor-name').value.trim();
+      if (!ip) { alert('Enter an IP'); return; }
+      const list = loadMonitorHosts();
+      if (list.some(h => h.ip === ip)) { alert('Already saved'); return; }
+      list.push({ ip, name: name || ip });
+      saveMonitorHosts(list);
+      document.getElementById('monitor-ip').value = '';
+      document.getElementById('monitor-name').value = '';
+      renderMonitorList();
+    }
+
+    function removeMonitorHost(i) {
+      const list = loadMonitorHosts();
+      list.splice(i, 1);
+      saveMonitorHosts(list);
+      renderMonitorList();
+    }
+
+    function useMonitorHost(ip) {
+      document.getElementById('host').value = ip;
+      setOutput('Loaded ' + ip + ' into connection form');
+    }
+
+    async function pingOne(ip) {
+      try {
+        const res = await fetch('/api/ping', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target: ip, count: 1 })
+        });
+        return await res.json();
+      } catch (e) {
+        return { alive: false, error: e.message, rtt_ms: null };
+      }
+    }
+
+    function notifyDown(name, ip) {
+      if (!document.getElementById('monitor-alerts').checked) return;
+      const msg = `ALERT: ${name || ip} (${ip}) is DOWN`;
+      setOutput(msg, true);
+      if (window.Notification && Notification.permission === 'granted') {
+        new Notification('Ali Hamza · Switch Down', { body: msg });
+      } else if (window.Notification && Notification.permission !== 'denied') {
+        Notification.requestPermission().then(p => {
+          if (p === 'granted') new Notification('Ali Hamza · Switch Down', { body: msg });
+        });
+      }
+      // Visual flash on badge
+      const badge = document.getElementById('monitor-badge');
+      badge.classList.remove('hidden');
+      badge.textContent = '⚠ DOWN: ' + (name || ip);
+      badge.className = 'text-xs px-2 py-1 rounded-full bg-red-900/80 text-red-200 border border-red-600';
+    }
+
+    async function monitorTick() {
+      let list = loadMonitorHosts();
+      for (let i = 0; i < list.length; i++) {
+        const r = await pingOne(list[i].ip);
+        const was = lastAlive[list[i].ip];
+        const now = !!r.alive;
+        list[i]._status = now ? 'up' : 'down';
+        list[i]._rtt = r.rtt_ms;
+        if (was === true && now === false) {
+          notifyDown(list[i].name, list[i].ip);
+        }
+        lastAlive[list[i].ip] = now;
+      }
+      // keep runtime status in memory only; persist base list
+      const base = list.map(({ ip, name }) => ({ ip, name }));
+      saveMonitorHosts(base);
+      // re-attach status for display
+      const saved = loadMonitorHosts();
+      saved.forEach((h, i) => {
+        h._status = list[i]._status;
+        h._rtt = list[i]._rtt;
+      });
+      // render with status
+      const el = document.getElementById('monitor-list');
+      el.innerHTML = list.map((h, i) => {
+        const st = h._status || 'unknown';
+        const color = st === 'up' ? 'text-emerald-400' : (st === 'down' ? 'text-red-400' : 'text-slate-400');
+        const dot = st === 'up' ? 'bg-emerald-400' : (st === 'down' ? 'bg-red-500 animate-pulse' : 'bg-slate-500');
+        const rtt = h._rtt != null ? h._rtt + ' ms' : '—';
+        return `<div class="flex items-center justify-between bg-slate-800/80 rounded-lg px-3 py-2 border border-slate-700">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-2.5 h-2.5 rounded-full ${dot}"></span>
+            <div class="min-w-0">
+              <div class="text-sm font-medium truncate">${h.name || h.ip}</div>
+              <div class="text-[10px] text-slate-400">${h.ip} · <span class="${color}">${st.toUpperCase()}</span> · ${rtt}</div>
+            </div>
+          </div>
+          <div class="flex gap-2 shrink-0">
+            <button onclick="useMonitorHost('${h.ip}')" class="text-[10px] bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded">Use</button>
+            <button onclick="removeMonitorHost(${i})" class="text-[10px] text-red-400 hover:text-red-300 px-2 py-1">✕</button>
+          </div>
+        </div>`;
+      }).join('') || '<p class="text-slate-500 text-sm">No switches saved.</p>';
+    }
+
+    function toggleMonitor() {
+      const btn = document.getElementById('btn-monitor-toggle');
+      const badge = document.getElementById('monitor-badge');
+      if (monitorRunning) {
+        clearInterval(monitorTimer);
+        monitorTimer = null;
+        monitorRunning = false;
+        btn.textContent = 'Start Monitor';
+        btn.className = 'bg-emerald-700 hover:bg-emerald-600 px-4 py-2 rounded-lg text-sm text-white';
+        badge.classList.add('hidden');
+        setOutput('Monitor stopped');
+        return;
+      }
+      if (!loadMonitorHosts().length) { alert('Add at least one switch IP first'); return; }
+      if (window.Notification && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+      monitorRunning = true;
+      btn.textContent = 'Stop Monitor';
+      btn.className = 'bg-red-700 hover:bg-red-600 px-4 py-2 rounded-lg text-sm text-white';
+      badge.classList.remove('hidden');
+      badge.textContent = '● Monitor ON';
+      badge.className = 'text-xs px-2 py-1 rounded-full bg-emerald-900/50 text-emerald-300 border border-emerald-700';
+      const sec = parseInt(document.getElementById('monitor-interval').value) || 10;
+      monitorTick();
+      monitorTimer = setInterval(monitorTick, sec * 1000);
+      setOutput('Monitor started (every ' + sec + 's)');
+    }
+
+    // ---------- IP Scanner ----------
+    async function runIpScan() {
+      const subnet = document.getElementById('scan-subnet').value.trim();
+      if (!subnet) { alert('Enter subnet e.g. 192.168.4.0/24 or 192.168.4.1-50'); return; }
+      const status = document.getElementById('scan-status');
+      const results = document.getElementById('scan-results');
+      status.textContent = 'Scanning ' + subnet + ' (please wait)...';
+      results.innerHTML = '';
+      setOutput('IP scan started: ' + subnet);
+      try {
+        const res = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subnet, timeout: 1.0 })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          status.textContent = data.error || 'Scan failed';
+          setOutput(data.error || 'Scan failed', true);
+          return;
+        }
+        status.innerHTML = `Scanned <b>${data.scanned}</b> · Alive <span class="text-emerald-400">${data.alive_count}</span> · No reply ${data.dead_count}`;
+        if (!data.alive.length) {
+          results.innerHTML = '<p class="text-slate-500">No hosts responded.</p>';
+        } else {
+          results.innerHTML = `<p class="text-[10px] text-slate-500 mb-2">Device type is a guess from TTL/hostname (not 100% accurate).</p>
+            <table class="w-full text-left"><thead><tr class="text-slate-400 border-b border-slate-700">
+            <th class="py-1">IP</th><th>Type</th><th>TTL</th><th>RTT</th><th></th></tr></thead><tbody>` +
+            data.alive.map(a => {
+              const label = a.device_label || 'Unknown';
+              const cls = a.device_class || '';
+              const color = cls.includes('pc') ? 'text-sky-300' : (cls.includes('mobile') ? 'text-amber-300' : (cls.includes('network') ? 'text-violet-300' : 'text-slate-300'));
+              return `<tr class="border-b border-slate-800">
+              <td class="py-1 text-emerald-300">${a.target}${a.hostname ? '<div class="text-[10px] text-slate-500">'+a.hostname+'</div>' : ''}</td>
+              <td class="${color}">${label}</td>
+              <td>${a.ttl != null ? a.ttl : '—'}</td>
+              <td>${a.rtt_ms != null ? a.rtt_ms + ' ms' : '—'}</td>
+              <td><button onclick="addScanToMonitor('${a.target}')" class="text-[10px] bg-slate-700 hover:bg-slate-600 px-2 py-0.5 rounded">+ Monitor</button>
+              <button onclick="useMonitorHost('${a.target}')" class="text-[10px] bg-slate-700 hover:bg-slate-600 px-2 py-0.5 rounded ml-1">Use</button></td>
+            </tr>`;
+            }).join('') + '</tbody></table>';
+        }
+        setOutput(`Scan done: ${data.alive_count} alive / ${data.scanned} scanned`);
+      } catch (e) {
+        status.textContent = e.message;
+        setOutput('Scan error: ' + e.message, true);
+      }
+    }
+
+    function addScanToMonitor(ip) {
+      const list = loadMonitorHosts();
+      if (list.some(h => h.ip === ip)) { setOutput(ip + ' already in monitor'); return; }
+      list.push({ ip, name: ip });
+      saveMonitorHosts(list);
+      renderMonitorList();
+      setOutput('Added ' + ip + ' to monitor list');
+    }
+
+    // init monitor list on load
+    renderMonitorList();
+
+    async function loadTemplates() {
+      const res = await fetch('/api/templates');
+      const data = await res.json();
+      const container = document.getElementById('templates-list');
+      container.innerHTML = data.templates.map(t => `
+        <div class="bg-slate-800 rounded-lg p-4">
+          <div class="flex justify-between items-start">
+            <div>
+              <h3 class="font-medium">${t.name}</h3>
+              <p class="text-xs text-slate-400 mt-1">${t.description}</p>
+            </div>
+            <button onclick='useTemplate(${JSON.stringify(t.commands)})' class="text-xs bg-sky-600 hover:bg-sky-500 px-3 py-1.5 rounded text-white">Use</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function useTemplate(commands) {
+      document.getElementById('config-commands').value = commands.join('\n');
+      showTab('config');
+    }
+
+    loadTemplates();
+  </script>
+</body>
+</html>
